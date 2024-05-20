@@ -36,3 +36,11 @@
     transform: rotate(360deg);
   }
 }
+
+.brandStyle {
+  font-family: 'Arial', sans-serif; /* Choose a similar font if Arial is not suitable */
+  font-weight: bold;
+  font-size: 24px; /* Adjust size as needed */
+  color: #000; /* Or any color that matches your design */
+  padding: 10px 20px; /* Adjust padding to better fit the navbar */
+}
