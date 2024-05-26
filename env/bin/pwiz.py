@@ -1,4 +1,4 @@
-#!/Users/rushiljayant/Desktop/Coding/GrowFolio/env/bin/python3
+#!/Users/rushiljayant/Desktop/Coding/GrowFolio/env/bin/python3.12
 
 import datetime
 import os
