@@ -166,6 +166,12 @@ def get_analyst_recommendations_summary(ticker: str) -> dict:
 def get_history(ticker: str, time_period="3mo", time_interval="1d") -> dict:
     """
     Get the history of a stock from its ticker
+    period: data period to download (either use period parameter or use start and end) Valid periods are:
+“1d”, “5d”, “1mo”, “3mo”, “6mo”, “1y”, “2y”, “5y”, “10y”, “ytd”, “max”
+interval: data interval (1m data is only for available for last 7 days, and data interval <1d for the last 60 days) Valid intervals are:
+“1m”, “2m”, “5m”, “15m”, “30m”, “60m”, “90m”, “1h”, “1d”, “5d”, “1wk”, “1mo”, “3mo”
+
+Period must be greater than interval
     """
     stock = get_stock(ticker)
 
