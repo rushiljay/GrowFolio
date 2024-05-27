@@ -1,3 +1,6 @@
+from sys import exception
+import langchain
+import langchain.globals
 import yfinance as yf
 from langchain_core.tools import tool
 from langchain.agents import AgentExecutor, create_tool_calling_agent
@@ -13,8 +16,11 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 # from langchain_community.tools.json.tool import JsonSpec
 # from pydantic import BaseModel, Field
 # from typing import Optional, Dict, Any
+import time
 import os
 import streamlit as st
+from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+import logging
 
 
 
@@ -25,15 +31,15 @@ def get_ticker (company_name: str) -> str:
     """Gets the ticker of a company name from Yahoo Finance"""
     #print(company_name)
     time.sleep(0.1)
-    url = "https://query2.finance.yahoo.com/v1/finance/search"
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    params = {"q": company_name, "quotes_count": 1, "country": "United States"}
     try:
+        url = "https://query2.finance.yahoo.com/v1/finance/search"
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        params = {"q": company_name, "quotes_count": 1, "country": "United States"}
         res = requests.get(url=url, params=params, headers={'User-Agent': user_agent})
         data = res.json()
         return data['quotes'][0]['symbol']
     except:
-        return company_name+" not found, try guessing the name or the ticker symbol of the company. It could also be that the company you are looking for is a private company, delisted company, or somethign else."
+        return company_name+" not found, try guessing the name or the ticker symbol of the company. It could also be that the company you are looking for is a private company, delisted company, or something else."
 
 def get_stock(ticker: str):
     try:
@@ -291,56 +297,131 @@ Langchain pipeline
 """
 
 if __name__ == '__main__':
-    load_dotenv(find_dotenv())
-    llm = ChatGroq(temperature=1, model_name="llama3-70b-8192")
 
-    api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=100)
-    wikitool = WikipediaQueryRun(api_wrapper=api_wrapper)
+    logger = logging.getLogger('yfinance')
+    logger.disabled = True
+    logger.propagate = False
+    # load_dotenv(find_dotenv())
+    # llm = ChatGroq(temperature=1, model_name="llama3-70b-8192")
 
-    tools = [get_ticker,
-            get_industry_sector_description,
-            get_company_risk,
-            get_price_info,
-            get_financial_data,
-            get_current_price,
-            get_analyst_recommendations_summary,
-            get_history,
-            get_actions,
-            get_income_stmt,
-            get_quarterly_income_stmt,
-            get_balance_sheet,
-            get_quarterly_balance_sheet,
-            get_cashflow,
-            get_quarterly_cashflow,
-            get_earnings_dates,
-            get_recommendations,
-            get_news, 
-            wikitool]
+    # api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=100)
+    # wikitool = WikipediaQueryRun(api_wrapper=api_wrapper)
+
+    # tools = [get_ticker,
+    #         get_industry_sector_description,
+    #         get_company_risk,
+    #         get_price_info,
+    #         get_financial_data,
+    #         get_current_price,
+    #         get_analyst_recommendations_summary,
+    #         get_history,
+    #         get_actions,
+    #         get_income_stmt,
+    #         get_quarterly_income_stmt,
+    #         get_balance_sheet,
+    #         get_quarterly_balance_sheet,
+    #         get_cashflow,
+    #         get_quarterly_cashflow,
+    #         get_earnings_dates,
+    #         get_recommendations,
+    #         get_news, 
+    #         wikitool]
     
-    print(os.getcwd())
+    # # print(os.getcwd())
 
-    with open('system.txt', 'r') as file:
-        system_message = file.read()
+    # with open('system.txt', 'r') as file:
+    #     system_message = file.read()
     
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", system_message),
-            ("placeholder", "{chat_history}"),
-            ("human", "{input}"),
-            ("placeholder", "{agent_scratchpad}"),
+    # prompt = ChatPromptTemplate.from_messages(
+    #     [
+    #         ("system", system_message),
+    #         ("placeholder", "{chat_history}"),
+    #         ("human", "{input}"),
+    #         ("placeholder", "{agent_scratchpad}"),
+    #     ]
+    # )    
+    # agent = create_tool_calling_agent(llm, tools, prompt)
+    # agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+    # chain = agent_executor
+
+    with st.sidebar:
+        groq_api_key = st.text_input("Groq API Key", key="groq_api_key", type="password")
+
+    # Streamlit page setup
+    st.title('GrowFolio Chatbot')
+    st.write("Ask any finance related questions!")
+
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = [
+            {"role": "assistant", "content": "Hi, I'm a chatbot who can give you stock market data and perform research. How can I help you?"}
         ]
-    )    
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
-    chain = agent_executor
+    for msg in st.session_state.messages:
+        st.chat_message(msg["role"]).write(msg["content"])
 
-    #TODO fix return direct issue
+    if prompt := st.chat_input(placeholder="What is the stock price of Apple?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
 
-    while True:
-        query = input("Human: ")
-        # print("Human: " + query)
-        try:
-            print("Chatbot: " + chain.invoke({"input": query})['output'])
-        except:
-            print("There was an error with your query")
+        if not groq_api_key:
+            st.info("Please add your Groq API key to continue.")
+            st.stop()
+
+        llm = ChatGroq(temperature=1, model_name="llama3-70b-8192", groq_api_key=groq_api_key)
+
+        api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=100)
+        wikitool = WikipediaQueryRun(api_wrapper=api_wrapper)
+
+        tools = [get_ticker,
+                get_industry_sector_description,
+                get_company_risk,
+                get_price_info,
+                get_financial_data,
+                get_current_price,
+                get_analyst_recommendations_summary,
+                get_history,
+                get_actions,
+                get_income_stmt,
+                get_quarterly_income_stmt,
+                get_balance_sheet,
+                get_quarterly_balance_sheet,
+                get_cashflow,
+                get_quarterly_cashflow,
+                get_earnings_dates,
+                get_recommendations,
+                get_news, 
+                wikitool]
+        
+        # print(os.getcwd())
+
+        with open('system.txt', 'r') as file:
+            system_message = file.read()
+        
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", system_message),
+                ("placeholder", "{chat_history}"),
+                ("human", "{input}"),
+                ("placeholder", "{agent_scratchpad}"),
+            ]
+        )    
+        agent = create_tool_calling_agent(llm, tools, prompt)
+        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+        chain = agent_executor
+        with st.chat_message("assistant"):
+            #print(st.session_state.messages[-1])
+            response = chain.invoke({"input": st.session_state.messages[-1]['content']})['output']
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.write(response)
+
+    # #TODO fix return direct issue
+
+    # while True:
+    #     query = input("Human: ")
+    #     # print("Human: " + query)
+    #     try:
+    #         print("Chatbot: " + chain.invoke({"input": query})['output'])
+    #     except:
+    #         print("There was an error with your query")
