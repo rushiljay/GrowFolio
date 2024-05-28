@@ -24,9 +24,8 @@ import logging
 
 
 
-# TODO: add more detialed descriptions to the functions
-
 @tool
+#TODO: if the ticker is a real ticker already, just return it
 def get_ticker (company_name: str) -> str:
     """Gets the ticker of a company name from Yahoo Finance"""
     #print(company_name)
@@ -39,7 +38,11 @@ def get_ticker (company_name: str) -> str:
         data = res.json()
         return data['quotes'][0]['symbol']
     except:
-        return company_name+" not found, try guessing the name or the ticker symbol of the company. It could also be that the company you are looking for is a private company, delisted company, or something else. Use the \"get_ticker\" tool once more. If all else fails, guess the ticker and continue with the research in other functions."
+        try:
+            stock = yf.Ticker(company_name)
+            return company_name
+        except:
+            return company_name+" not found, try guessing the name or the ticker symbol of the company, and try with other function."
 
 def get_stock(ticker: str):
     try:
@@ -374,7 +377,7 @@ if __name__ == '__main__':
             st.info("Please add your Groq API key to continue.")
             st.stop()
 
-        llm = ChatGroq(temperature=0.5, model_name="llama3-70b-8192", groq_api_key=groq_api_key)
+        llm = ChatGroq(temperature=0.5, model_name="llama3-70b-8192", groq_api_key=groq_api_key) # plz dont change
 
         api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=100)
         wikitool = WikipediaQueryRun(api_wrapper=api_wrapper)
@@ -423,11 +426,12 @@ if __name__ == '__main__':
             REATTEMPT_LIMIT = 3
             query = st.session_state.messages[-1]['content']
             while i < REATTEMPT_LIMIT:
+                print(query, i)
                 try:
                     if (IN_PROGRESS):
                         tempQuery = query
                         if (i == 0):
-                            tempQuery += " (Use get_news or wikipedia for more nuanced questions )"
+                            tempQuery += " (Use get_news or wikipedia for more nuanced questions, use tools in formulating a cohesive response with latest data)"
                         response = chain.invoke({"input": tempQuery})['output']
                         st.session_state.messages.append({"role": "assistant", "content": response})
                         response = response.replace("$","\$")
@@ -445,9 +449,10 @@ if __name__ == '__main__':
                         st.write_stream(stream_data)
                         #st.write(response)
                         IN_PROGRESS = False
+                        i = 0
                     break
                 except Exception as e:
-                    query = "USE LESS TOOLS!!! Don't use \"get_news\" or wikipedia!!! " + query
+                    query = "USE LESS TOOLS!!! Don't use \"get_news\"!!! " + query
                     #tools = tools[1:-1]
                     print(e)
                     response = e
