@@ -39,7 +39,7 @@ def get_ticker (company_name: str) -> str:
         data = res.json()
         return data['quotes'][0]['symbol']
     except:
-        return company_name+" not found, try guessing the name or the ticker symbol of the company. It could also be that the company you are looking for is a private company, delisted company, or something else."
+        return company_name+" not found, try guessing the name or the ticker symbol of the company. It could also be that the company you are looking for is a private company, delisted company, or something else. Use the \"get_ticker\" tool once more. If all else fails, guess the ticker and continue with the research in other functions."
 
 def get_stock(ticker: str):
     try:
@@ -68,16 +68,18 @@ def get_company_risk(ticker: str) -> dict:
     Get the risk assessment of a company from its ticker
     """
     stock = get_stock(ticker)
-    
-    risk_assessment = {
-        'auditRisk': stock.info['auditRisk'],
-        'boardRisk': stock.info['boardRisk'],
-        'compensationRisk': stock.info['compensationRisk'],
-        'shareHolderRightsRisk': stock.info['shareHolderRightsRisk'],
-        'overallRisk': stock.info['overallRisk']
-    }
-    return risk_assessment
 
+    company_risk = {}
+
+    keys = ['auditRisk', 'boardRisk', 'compensationRisk', 'shareHolderRightsRisk', 'overallRisk']
+
+    for key in keys:
+        try:
+            company_risk[key] = stock.info[key]
+        except KeyError:
+            company_risk[key] = 'N/A'
+
+    return company_risk
 
 @tool
 def get_price_info(ticker: str) -> dict:
@@ -85,18 +87,17 @@ def get_price_info(ticker: str) -> dict:
     Get detailed price information of a company from its ticker
     """
     stock = get_stock(ticker)
+
+    price_info = {}
+
+    keys = ['priceHint','previousClose','open','dayLow','dayHigh','regularMarketPreviousClose','regularMarketOpen','regularMarketDayLow','regularMarketDayHigh']
     
-    price_info = {
-        'priceHint': stock.info['priceHint'],
-        'previousClose': stock.info['previousClose'],
-        'open': stock.info['open'],
-        'dayLow': stock.info['dayLow'],
-        'dayHigh': stock.info['dayHigh'],
-        'regularMarketPreviousClose': stock.info['regularMarketPreviousClose'],
-        'regularMarketOpen': stock.info['regularMarketOpen'],
-        'regularMarketDayLow': stock.info['regularMarketDayLow'],
-        'regularMarketDayHigh': stock.info['regularMarketDayHigh']
-    }
+    for key in keys:
+        try:
+            price_info[key] = stock.info[key]
+        except KeyError:
+            price_info[key] = 'N/A'
+    
     return price_info
 
 @tool
@@ -135,7 +136,7 @@ def get_financial_data(ticker: str) -> dict:
         try:
             financial_data[key] = stock.info[key]
         except KeyError:
-            financial_data[key] = 0
+            financial_data[key] = 'N/A'
     return financial_data
 
 #TODO: make this return DIRECT OUTPUT
@@ -155,16 +156,17 @@ def get_analyst_recommendations_summary(ticker: str) -> dict:
     Get analyst recommendation for a stock from its ticker
     """
     stock = get_stock(ticker)
+
+    keys = ['targetHighPrice', 'targetLowPrice', 'targetMeanPrice', 'targetMedianPrice', 'recommendationMean', 'recommendationKey', 'numberOfAnalystOpinions']
     
-    analyst_recommendations = {
-        'targetHighPrice': stock.info['targetHighPrice'],
-        'targetLowPrice': stock.info['targetLowPrice'],
-        'targetMeanPrice': stock.info['targetMeanPrice'],
-        'targetMedianPrice': stock.info['targetMedianPrice'],
-        'recommendationMean': stock.info['recommendationMean'],
-        'recommendationKey': stock.info['recommendationKey'],
-        'numberOfAnalystOpinions': stock.info['numberOfAnalystOpinions']
-    }
+    analyst_recommendations = {}
+
+    for key in keys:
+        try:
+            analyst_recommendations[key] = stock.info[key]
+        except KeyError:
+            analyst_recommendations[key] = 'N/A'
+
     return analyst_recommendations
 
 # This can directly be fed into the charting tool
@@ -289,13 +291,6 @@ def get_news(ticker: str) -> dict:
 
 # TODO: need to implement holders and options
 
-"""
-Langchain pipeline
-1. Get the market data query
-3. Feed output to JSON parser for langchain
-4. Return the output
-"""
-
 if __name__ == '__main__':
 
     logger = logging.getLogger('yfinance')
@@ -345,6 +340,8 @@ if __name__ == '__main__':
 
     # chain = agent_executor
 
+    # ###
+
     with st.sidebar:
         groq_api_key = st.text_input("Groq API Key", key="groq_api_key", type="password")
 
@@ -360,15 +357,24 @@ if __name__ == '__main__':
     for msg in st.session_state.messages:
         st.chat_message(msg["role"]).write(msg["content"])
 
+    IN_PROGRESS = False
+
     if prompt := st.chat_input(placeholder="What is the stock price of Apple?"):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        st.chat_message("user").write(prompt)
+        if IN_PROGRESS:
+            st.info("Please wait for the current request to finish.")
+            st.stop()
+        else:
+            IN_PROGRESS = True
+            st.chat_message("user").write(prompt)
+
+        print(IN_PROGRESS)
 
         if not groq_api_key:
             st.info("Please add your Groq API key to continue.")
             st.stop()
 
-        llm = ChatGroq(temperature=1, model_name="llama3-70b-8192", groq_api_key=groq_api_key)
+        llm = ChatGroq(temperature=0.5, model_name="llama3-70b-8192", groq_api_key=groq_api_key)
 
         api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=100)
         wikitool = WikipediaQueryRun(api_wrapper=api_wrapper)
@@ -412,16 +418,48 @@ if __name__ == '__main__':
         chain = agent_executor
         with st.chat_message("assistant"):
             #print(st.session_state.messages[-1])
-            response = chain.invoke({"input": st.session_state.messages[-1]['content']})['output']
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.write(response)
+            response = ''
+            i = 0
+            REATTEMPT_LIMIT = 3
+            query = st.session_state.messages[-1]['content']
+            while i < REATTEMPT_LIMIT:
+                try:
+                    if (IN_PROGRESS):
+                        tempQuery = query
+                        if (i == 0):
+                            tempQuery += " (Use get_news or wikipedia for more nuanced questions )"
+                        response = chain.invoke({"input": tempQuery})['output']
+                        st.session_state.messages.append({"role": "assistant", "content": response})
+                        response = response.replace("$","\$")
 
-    # #TODO fix return direct issue
+
+                        # for word in response.split(" "):
+                        #     time.sleep(0.01)
+                        #     st.write_stream(word + " ")
+
+                        def stream_data():
+                            for word in response.split(" "):
+                                    yield word + " "
+                                    time.sleep(0.02)
+                        
+                        st.write_stream(stream_data)
+                        #st.write(response)
+                        IN_PROGRESS = False
+                    break
+                except Exception as e:
+                    query = "USE LESS TOOLS!!! Don't use \"get_news\" or wikipedia!!! " + query
+                    #tools = tools[1:-1]
+                    print(e)
+                    response = e
+                    i += 1
+
+    # ###
 
     # while True:
     #     query = input("Human: ")
     #     # print("Human: " + query)
     #     try:
-    #         print("Chatbot: " + chain.invoke({"input": query})['output'])
-    #     except:
+    #         print("Chatbot: " + chain.invoke({"input": query + " (Use tools as necessary in formulating a cohesive response)"})['output'])
+    #     except Exception as e:
+    #         print(e)
     #         print("There was an error with your query")
